@@ -2,28 +2,32 @@ mod cli;
 mod crypto;
 mod network;
 mod protocol;
+mod relay;
 mod transfer;
+mod transport;
 mod tui;
 
 use anyhow::Result;
 use cli::{Cli, Commands};
 use crypto::Cipher;
-use network::{connect, listen, Connection};
 use protocol::Message;
-use std::path::Path;
-use std::time::{Duration, Instant};
-use transfer::{FileChunker, FileMetadata, FileWriter};
+use std::time::Instant;
+use transfer::{FileChunker, FileWriter};
+use transport::Transport;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse_args();
     
     match cli.command {
-        Commands::Send { path, code, words } => {
-            send_file(path, code, words, cli.port, cli.no_tui).await?;
+        Commands::Send { path, code, words, relay } => {
+            send_file(path, code, words, cli.port, cli.no_tui, relay).await?;
         }
-        Commands::Receive { code, output, resume } => {
-            receive_file(code, output, cli.port, cli.no_tui, resume).await?;
+        Commands::Receive { code, output, resume, relay } => {
+            receive_file(code, output, cli.port, cli.no_tui, resume, relay).await?;
+        }
+        Commands::Relay { port } => {
+            relay::run_relay_server(port).await?;
         }
     }
     
@@ -36,6 +40,7 @@ async fn send_file(
     word_count: usize,
     port: Option<u16>,
     no_tui: bool,
+    relay_addr: Option<String>,
 ) -> Result<()> {
     // Generate or use custom code
     let code = custom_code.unwrap_or_else(|| crypto::generate_code(word_count));
@@ -53,9 +58,13 @@ async fn send_file(
     let metadata = transfer::get_file_metadata(&file_path).await?;
     println!("File: {} ({} bytes)", metadata.name, metadata.size);
     
-    // Wait for connection
-    let mut conn = listen(port).await?;
-    println!("✓ Connected to {}", conn.peer_addr());
+    // Wait for connection (either direct or via relay)
+    let mut conn = Transport::new_sender(relay_addr, &code, port).await?;
+    if let Some(addr) = conn.peer_addr() {
+        println!("✓ Connected to {}", addr);
+    } else {
+        println!("✓ Connected via relay");
+    }
     
     // Send hello
     let hello = Message::Hello { version: protocol::PROTOCOL_VERSION };
@@ -148,6 +157,7 @@ async fn receive_file(
     port: Option<u16>,
     no_tui: bool,
     resume: bool,
+    relay_addr: Option<String>,
 ) -> Result<()> {
     println!("⚡ Zap - Receive File");
     println!("═══════════════════════════════════════");
@@ -155,16 +165,31 @@ async fn receive_file(
     println!("Connecting to sender...");
     println!();
     
-    // For MVP, require host to connect to
-    // In full version, we'd use mDNS discovery
-    println!("Enter sender's IP address (or 'localhost' for local transfer):");
-    let mut host = String::new();
-    std::io::stdin().read_line(&mut host)?;
-    let host = host.trim();
+    // Get host if not using relay
+    let host = if relay_addr.is_none() {
+        // For MVP, require host to connect to
+        // In full version, we'd use mDNS discovery
+        println!("Enter sender's IP address (or 'localhost' for local transfer):");
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)?;
+        Some(input.trim().to_string())
+    } else {
+        None
+    };
     
-    // Connect to sender
-    let mut conn = connect(host, port).await?;
-    println!("✓ Connected to {}", conn.peer_addr());
+    // Connect to sender (either direct or via relay)
+    let mut conn = Transport::new_receiver(
+        relay_addr,
+        &code,
+        host.as_deref(),
+        port,
+    ).await?;
+    
+    if let Some(addr) = conn.peer_addr() {
+        println!("✓ Connected to {}", addr);
+    } else {
+        println!("✓ Connected via relay");
+    }
     
     // Send hello
     let hello = Message::Hello { version: protocol::PROTOCOL_VERSION };

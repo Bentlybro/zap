@@ -36,6 +36,10 @@ pub enum Commands {
         /// Number of words in generated code (default: 3)
         #[arg(long, short = 'w', default_value = "3")]
         words: usize,
+        
+        /// Use relay server (format: host:port)
+        #[arg(long)]
+        relay: Option<String>,
     },
     
     /// Receive a file or directory
@@ -50,6 +54,17 @@ pub enum Commands {
         /// Resume a previous transfer
         #[arg(long, short = 'r')]
         resume: bool,
+        
+        /// Use relay server (format: host:port)
+        #[arg(long)]
+        relay: Option<String>,
+    },
+    
+    /// Run a relay server for NAT-to-NAT transfers
+    Relay {
+        /// Port to listen on
+        #[arg(long, short = 'p', default_value = "7777")]
+        port: u16,
     },
 }
 

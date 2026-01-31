@@ -77,6 +77,38 @@ zap send myfile.zip --port 8080
 zap send myfile.zip --verbose
 ```
 
+### Relay Server (NAT-to-NAT Transfers)
+
+When both sender and receiver are behind NAT/firewalls, use a relay server to facilitate the transfer. The relay is **blind** — it only forwards encrypted bytes and never sees the plaintext.
+
+#### Run a relay server:
+
+```bash
+# Start relay on default port (7777)
+zap relay
+
+# Start on custom port
+zap relay --port 8888
+```
+
+#### Send via relay:
+
+```bash
+zap send myfile.zip --relay your-server.com:7777
+```
+
+#### Receive via relay:
+
+```bash
+zap receive alpha-bravo-charlie --relay your-server.com:7777
+```
+
+**Note:** The relay server:
+- Never sees your transfer code (only a BLAKE3 hash)
+- Never sees plaintext data (all E2E encrypted)
+- Stores nothing on disk (RAM only)
+- Supports multiple concurrent transfers
+
 ## 🔐 Security
 
 Zap uses industry-standard cryptography:
@@ -115,10 +147,10 @@ Your files are encrypted **before** they leave your device and decrypted **only*
 - [x] E2E encryption
 - [x] Word code generation
 - [x] TUI with progress bars
+- [x] Relay server for NAT-to-NAT transfers
 - [ ] mDNS LAN discovery
 - [ ] NAT traversal / hole punching
 - [ ] Resumable transfers
-- [ ] Relay server for NAT-to-NAT transfers
 - [ ] Multiple file transfers
 - [ ] QR code generation for mobile
 - [ ] Web UI for easier sharing
